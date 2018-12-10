@@ -52,8 +52,6 @@ ChatDialog::ChatDialog()
     //start command
     stopped->addTransition(this, SIGNAL(getStart()), follower);
 
-
-
     qDebug()<<"#Debug ChatDialog(): initilize transition";
     rolemachine.addState(follower);
     rolemachine.addState(candidate);
@@ -95,6 +93,7 @@ ChatDialog::ChatDialog()
     m_messageStatus = new QMap<QString, quint32>;
 
     SeqNo = 0;
+    consensusID = 0; //next message ID that should update to local log
     connect(textline, SIGNAL(returnPressed()), this, SLOT(gotReturnPressed()));
     //listen to anything received on the port
     connect(mySocket, SIGNAL(readyRead()), this, SLOT(readPendDgrams()));
@@ -149,6 +148,13 @@ void ChatDialog::processHeartBeat(){
         curleader = poleader;
         qDebug()<< "#" << mySocket->getmyport() << " Status: Current leader is: " << curleader << " #";
         textview->append(" Status: Current leader is: " + QString::number(curleader));
+        while(consensus_log.contains(consensusID)){
+            int sender = consensus_log[consensusID]["FROM"];
+            QString curMSG = consensus_log[consensusID]["MSG"];
+            if(sender == mySocket->getmyport()){
+                local_cache.erase(local_cache.indexOf(curMSG));
+            }
+        }
 
     }
     else{
@@ -241,6 +247,7 @@ void ChatDialog::sendHeartBeat(){
         map.insert("term", curterm);
         qDebug()<<"#Debug: insert curterm";
         map.insert("From", mySocket->getmyport());
+        map.insert("ConsensusLog", consensus_log);
         //later to add more for append logs
 
         qDebug()<<"#Debug: create heart map";
@@ -281,7 +288,6 @@ void ChatDialog::stopHandler(){
         qDebug()<<"#Debug: leader got stopped";
         textview->append(QString::number(mySocket->getmyport()) + "$Cresponse: leader got stopped");
         heartTimer->stop();
-
     }
     else if(rolemachine.configuration().contains(candidate)){
         qDebug()<<"#Debug: candidate got stopped";
@@ -403,6 +409,18 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
     int sender = messageMap["From"].toInt();
 
     if(dropped.find(sender)==dropped.end()){
+        if(rolemachine.property("state").toString()=="leader"){
+            if(messageMap.contains["MSG"]){
+                QString revMSG = messageMap["MSG"];
+                QVariantMap map;
+                map.insert("sender",sender);
+                map.insert("consensusID",consensusID);
+                map.insert("MSG",revMSG);
+                consensus_log.insert(consensusID,map);
+                consensusID++;
+            }
+            // send local
+        }
         if(messageMap.contains("AppendEntries")){
             //deal with term compare and leaderId here
             revTerm = messageMap["term"].toInt();
@@ -410,6 +428,7 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
                 emit higherTerm();
             }
             poleader = messageMap["From"].toInt();
+            consensus_log = messageMap["ConsensusLog"];
             //if Candidate->follower, if Follower, process heartbeat reply ack
             emit getHeartBeat();
         }
@@ -427,19 +446,6 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
         }
     }
 
-
-
-//    if (messageMap.contains("Want")) {
-//        if (statusMap.isEmpty()) {
-//            return;
-//        }
-
-//        processStatus(statusMap);
-//    } else if(messageMap.contains("ChatText")){
-//         processMessage(messageMap);
-//    } else {
-//        return;
-//    }
 }
 
 //void ChatDialog::processMessage(QVariantMap messageMap){
@@ -551,17 +557,34 @@ void ChatDialog::gotReturnPressed()
     textview->append(QString::number(mySocket->getmyport()) + ": " + textline->text());
 
     QString input = textline->text();
-    QByteArray message = serialize(input);
 
-    if(input=="<STOP>"){
-        emit getStop();
-    }
     if(input == "<START>"){
         emit getStart();
     }
 
-    if(input.startsWith("<DROP")){
+    if(input.startsWith("<MSG>")){
+        QString msg = input.mid(5,input.length()-5);
+        local_cache.append(msg);
+        qDebug() << "local cache add : " << msg;
+        if(curleader!=0){
+            QByteArray body;
+            QVariantMap map;
+            map.insert("From",mySocket->getmyport());
+            map.insert("MSG",msg);
+            QDataStream out(&body, QIODevice::WriteOnly);
+            out << map;
+            mySocket->writeDatagram(body, QHostAddress::LocalHost, curleader);
+        }
+    }
 
+    if(input=="<STOP>"){
+        emit getStop();
+    }
+
+    //should check STOP status here
+    //if stopped, return
+
+    if(input.startsWith("<DROP")){
         int toBeDropped = input.mid(6,5).toInt();
         dropped.insert(toBeDropped);
         textview->append(QString::number(mySocket->getmyport()) +"$Cresponse: Current dropped nodes --");
@@ -599,6 +622,14 @@ void ChatDialog::gotReturnPressed()
 
     }
 
+    if(input == "<GET_CHAT>"){
+        textview->append("GET CHAT MOCK........... ");
+        for(int i = 0; i < consensusID; i++){
+            textview->append("  ID "+QString::number(i));
+            textview->append("  sender "+consensus_log[i]["From"]);
+            textview->append("  MSG"+consensus_log[i]["MSG"]);
+        }
+    }
 
     if(localWants.contains(QString::number(mySocket->getmyport()))) {
         localWants[QString::number(mySocket->getmyport())] += 1;
@@ -606,8 +637,6 @@ void ChatDialog::gotReturnPressed()
     else {
         localWants.insert(QString::number(mySocket->getmyport()), 1);
     }
-
-    sendDgram(message);
     textline->clear();
 }
 

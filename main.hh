@@ -57,10 +57,13 @@ class ChatDialog : public QDialog
         void sendDgram(QByteArray);
         NetSocket *mySocket;
         int SeqNo;
+        int consensusID;
         int remotePort; //port i receive from
         int neighbor; //port i send to
         QMap<QString, quint32> localWants;
         QVariantMap last_message;
+        QVector<QString> local_cache;
+        QVariantMap consensus_log;
         QMap<QString, QMap<quint32, QVariantMap> > messages_list;
         QTimer * timtoutTimer;
         QTimer * electTimer;
