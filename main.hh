@@ -110,7 +110,6 @@ class ChatDialog : public QDialog
         void leaderHandler();
         //comand handler
         void stopHandler();
-        //void startHandler();
 
         void processVote(QVariantMap);
 
@@ -118,7 +117,9 @@ class ChatDialog : public QDialog
         void processHeartBeat();
 
         void sendHeartBeat();
-        //void stoppedHandler();
+
+
+
 
 
     private:
