@@ -102,7 +102,10 @@ ChatDialog::ChatDialog()
 
 }
 
+
+
 void ChatDialog::followerHandler() {
+        heartTimer->stop();
         qDebug() << "#Debug: Become a Follower " << mySocket->getmyport();
         textview->append("#Debug: Become a Follower " + QString::number(mySocket->getmyport()));
         int r = rand() % (8000 - 5000) + 5000;
@@ -125,6 +128,7 @@ void ChatDialog::goVote(){
             map.insert("VoteFor", false);// candidate->follower
         }
         else{
+            curleader = 0;
             map.insert("VoteFor", true);
             map.insert("From", mySocket->getmyport());
             curterm = revTerm;
@@ -165,10 +169,11 @@ void ChatDialog::processHeartBeat(){
 }
 
 void ChatDialog::candidateHandler(){
+    curterm++;
     curleader = 0;
     qDebug()<<"#Debug: Become a Candidate " << mySocket->getmyport();
-    textview->append("#Debug: SBecome a Candidate " + QString::number(mySocket->getmyport()));
-    candidateTimer->start(500);
+    textview->append("#Debug: Become a Candidate " + QString::number(mySocket->getmyport()));
+    candidateTimer->start(50);
 	voter.clear();
 	numofvotes = 1;
 	sendVoteReq();
@@ -194,9 +199,10 @@ void ChatDialog::sendVoteReq() {
             qDebug()<<"#Debug: sendVoteReq  no participants";
         for (int i = 0; i < participants.size(); i++) {
 
-        if(!voter.contains(participants[i]))
+        if(!voter.contains(participants[i])){
                 qDebug()<< "#Debug: sendVoteReq() to " << participants[i];
                 mySocket->writeDatagram(data, QHostAddress::LocalHost, participants[i]);
+        }
         }
 }
 
@@ -209,17 +215,20 @@ void ChatDialog::processVote(QVariantMap voteMsg){
 		emit higherTerm();	
 	}
 	else{
-        voter.insert(voteMsg["From"].toInt());
-		numofvotes++;
-		if(numofvotes ==3){
-			emit getThreeVotes();		
-		}
+
+            voter.insert(voteMsg["From"].toInt());
+            numofvotes++;
+            if(numofvotes ==3){
+                emit getThreeVotes();
+            }
+
 	}
 	
 }
 
 
 void ChatDialog::leaderHandler(){
+        //curterm++;
         curleader = mySocket->getmyport();
         qDebug()<<"#Debug: Become a leader now! " << mySocket->getmyport();
         textview->append("#Debug: Become a *** LEADER *** " + QString::number(mySocket->getmyport()));
@@ -230,12 +239,13 @@ void ChatDialog::leaderHandler(){
         connect(heartTimer, SIGNAL(timeout()),this, SLOT(sendHeartBeat()));
         //leader->follower
         //connect(higher term)
+
 	
 }
 
 void ChatDialog::sendHeartBeat(){
         qDebug()<<"#Debug: Send a HeartBeat "<< mySocket->getmyport();
-        textview->append("#Debug: Send a HeartBeat " + QString::number(mySocket->getmyport()));
+        textview->append("#Debug: Send a HeartBeat--Term = "+QString::number(curterm) + QString::number(mySocket->getmyport()));
         qDebug() <<"#Debug: participants number: " << participants.size();
 	//restart timer
         heartTimer->start(5000);
@@ -435,6 +445,9 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
         else if(messageMap.contains("RequestVote")){
             //receive a voting request
             qDebug()<<"#Debug: Receive a Voting Request";
+            if(messageMap["term"].toInt() > curterm){
+                emit higherTerm();
+            }
             toBeVoted = messageMap["From"].toInt();
             emit getVoteReq();
 
