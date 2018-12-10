@@ -141,8 +141,7 @@ void ChatDialog::goVote(){
 }
 
 void ChatDialog::processHeartBeat(){
-    qDebug()<<"#Debug: receive a heartbeat " << mySocket->getmyport();
-    textview->append("#Debug: receive a heartbeat " + QString::number(mySocket->getmyport()));
+    textview->append( QString::number(mySocket->getmyport())+"Debug: REC heartbeat");
     electTimer->start();
     //check term, if less than cur, reply false
     //if term higher, reply true
@@ -152,12 +151,15 @@ void ChatDialog::processHeartBeat(){
         curleader = poleader;
         qDebug()<< "#" << mySocket->getmyport() << " Status: Current leader is: " << curleader << " #";
         textview->append(" Status: Current leader is: " + QString::number(curleader));
-        while(consensus_log.contains(consensusID)){
-            int sender = consensus_log[consensusID]["FROM"];
-            QString curMSG = consensus_log[consensusID]["MSG"];
+        while(consensus_log.contains(QString::number(consensusID))){
+            QVariantMap curMap = QVariant(consensus_log[QString::number(consensusID)]).toMap();
+            int sender = QVariant(curMap["FROM"]).toInt();
+            QString curMSG = QVariant(curMap["MSG"]).toString();
             if(sender == mySocket->getmyport()){
-                local_cache.erase(local_cache.indexOf(curMSG));
+                local_cache.remove(local_cache.indexOf(curMSG));
             }
+            textview->append(curMap["From"].toString() + ": " + curMap["MSG"].toString());
+            consensusID++;
         }
 
     }
@@ -293,24 +295,6 @@ void ChatDialog::stopHandler(){
     disconnect(this, SIGNAL(getVote(QVariantMap)), this, SLOT(processVote(QVariantMap)));
 
     textview->append("$Cresponse:Current activities got stopped" +QString::number(mySocket->getmyport()));
-    /*
-    if(rolemachine.configuration().contains(leader)){
-        qDebug()<<"#Debug: leader got stopped";
-        textview->append(QString::number(mySocket->getmyport()) + "$Cresponse: leader got stopped");
-        heartTimer->stop();
-    }
-    else if(rolemachine.configuration().contains(candidate)){
-        qDebug()<<"#Debug: candidate got stopped";
-        textview->append(QString::number(mySocket->getmyport()) + "$Cresponse: candidate got stopped");
-        candidateTimer->stop();
-        disconnect(this, SIGNAL(getVote(QVariantMap)), this, SLOT(processVote(QVariantMap)));
-    }
-    else if(rolemachine.configuration().contains(follower)){
-        qDebug()<<"#Debug: follower got stopped";
-        textview->append(QString::number(mySocket->getmyport()) + "$Cresponse: follower got stopped");
-        electTimer->stop();
-    }
-    */
 }
 
 void ChatDialog::createMessageMap(QVariantMap * map, QString text) {
@@ -413,23 +397,20 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
         return;
     }
 
-//    QMap<QString, QMap<QString, quint32> > statusMap;
-//    QDataStream stream(&incomingBytes, QIODevice::ReadOnly);
-//    stream >> statusMap;
     int sender = messageMap["From"].toInt();
 
     if(dropped.find(sender)==dropped.end()){
         if(rolemachine.property("state").toString()=="leader"){
-            if(messageMap.contains["MSG"]){
-                QString revMSG = messageMap["MSG"];
+            if(messageMap.contains("MSG")){
+                QString revMSG = QVariant(messageMap["MSG"]).toString();
                 QVariantMap map;
-                map.insert("sender",sender);
+                map.insert("From",sender);
                 map.insert("consensusID",consensusID);
                 map.insert("MSG",revMSG);
-                consensus_log.insert(consensusID,map);
+                consensus_log.insert(QString::number(consensusID),map);
+                textview->append(QString::number(sender) + ": " + revMSG);
                 consensusID++;
             }
-            // send local
         }
         if(messageMap.contains("AppendEntries")){
             //deal with term compare and leaderId here
@@ -438,13 +419,19 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
                 emit higherTerm();
             }
             poleader = messageMap["From"].toInt();
-            consensus_log = messageMap["ConsensusLog"];
+            consensus_log = messageMap["ConsensusLog"].toMap();
             //if Candidate->follower, if Follower, process heartbeat reply ack
+            while(consensus_log.contains(QString::number(consensusID))){
+                QVariantMap logInfo = consensus_log[QString::number(consensusID)].toMap();
+                textview->append("Debug: new message from"+logInfo["From"].toString());
+                textview->append(QVariant(logInfo["From"]).toString() + " : " + logInfo["MSG"].toString());
+                consensusID++;
+            }
             emit getHeartBeat();
         }
         else if(messageMap.contains("RequestVote")){
             //receive a voting request
-            qDebug()<<"#Debug: Receive a Voting Request";
+            qDebug()<<"Receive a Voting Request";
             if(messageMap["term"].toInt() > curterm){
                 emit higherTerm();
             }
@@ -454,113 +441,12 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
         }
         else if(messageMap.contains("VoteFor")){
             //receive a vote from follower
-            qDebug()<<"#Debug: Receive a Vote from Follower";
+            qDebug()<<"Receive a Vote from Follower";
             emit getVote(messageMap);
         }
     }
 
 }
-
-//void ChatDialog::processMessage(QVariantMap messageMap){
-
-//    quint32 origin = messageMap.value("Origin").toUInt();
-//    quint32 seqNo = messageMap.value("SeqNo").toUInt();
-
-//    if(mySocket->getmyport() != origin) {
-//        if(localWants.contains(QString::number(origin))) {\
-//            if (seqNo == localWants.value(QString::number(origin))) {
-//                 addMlist(messageMap, origin, seqNo);
-//                 localWants[QString::number(origin)] = seqNo + 1;
-//            }
-//        } else {
-//            localWants.insert(QString::number(origin), seqNo+1);
-//            addMlist(messageMap, origin, seqNo);
-//        }
-//    } else {
-
-//        if(localWants.contains(QString::number(origin))) {
-//            localWants[QString::number(origin)] = seqNo + 1;
-//        } else {
-//            localWants.insert(QString::number(origin), seqNo+1);
-//        }
-//    }
-
-//    timtoutTimer->stop();
-//    sendStatus(serializeStatus());
-//}
-
-
-//void ChatDialog::addMlist(QVariantMap messageMap, quint32 origin, quint32 seqNo){
-
-//    if(messages_list.contains(QString::number(origin))) {
-//        messages_list[QString::number(origin)].insert(seqNo, messageMap);
-//    }
-//    else {
-//        QMap<quint32, QMap<QString, QVariant> > qMap;
-//        messages_list.insert(QString::number(origin), qMap);
-//        messages_list[QString::number(origin)].insert(seqNo, messageMap);
-//    }
-
-//    textview->append(QString::number(origin) + ": " + messageMap.value("ChatText").toString());
-//    rumorMongering(messageMap);
-//    last_message = messageMap;
-
-//}
-
-
-//void ChatDialog::processStatus(QMap<QString, QMap<QString, quint32> > receivedStatusMap)
-//{
-
-//    QMap<QString, QVariant> rumorMapToSend;
-//    QMap<QString, quint32> remwant = receivedStatusMap["Want"];
-
-//    enum Status { SYNCED = 1, AHEAD = 2 , BEHIND = 3 };
-//    Status status =  SYNCED;
-
-//    QMap<QString, quint32>::const_iterator localIter = localWants.constBegin();
-
-//    while (localIter != localWants.constEnd()){
-//        if(!remwant.contains(localIter.key())){
-//            status = AHEAD;
-//            rumorMapToSend = messages_list[localIter.key()][quint32(0)];
-//        } else if(remwant[localIter.key()] < localWants[localIter.key()]) {
-//            status = AHEAD;
-//            rumorMapToSend = messages_list[localIter.key()][remwant[localIter.key()]];
-//        }
-//        else if(remwant[localIter.key()] > localWants[localIter.key()]){
-//            status = BEHIND;
-//        }
-//        ++localIter;
-//    }
-
-//    QMap<QString, quint32>::const_iterator remoteIter = remwant.constBegin();
-//    while (remoteIter != remwant.constEnd()){
-//        if(!localWants.contains(remoteIter.key())) {
-//            status = BEHIND;
-//        }
-//        ++remoteIter;
-//    }
-//    timtoutTimer->stop();
-
-//    QByteArray rumorByteArray;
-//    QDataStream * stream = new QDataStream(&rumorByteArray, QIODevice::ReadWrite);
-//    (*stream) << rumorMapToSend;
-//    delete stream;
-
-//    switch(status) {
-//        case AHEAD:
-//            mySocket->writeDatagram(rumorByteArray, QHostAddress::LocalHost, remotePort);
-//            break;
-//        case BEHIND:
-//            sendStatus(serializeStatus());
-//            break;
-//        case SYNCED:
-//            if(qrand() > .5*RAND_MAX) {
-//                rumorMongering(last_message);
-//            }
-//            break;
-//    }
-//}
 
 
 void ChatDialog::gotReturnPressed()
@@ -578,12 +464,20 @@ void ChatDialog::gotReturnPressed()
     if(input.startsWith("<MSG>")){
         QString msg = input.mid(5,input.length()-5);
         local_cache.append(msg);
-        qDebug() << "local cache add : " << msg;
-        if(curleader!=0){
+        QVariantMap map;
+        map.insert("From",mySocket->getmyport());
+        textview->append("Debug: add sender info "+map["From"].toString());
+        map.insert("MSG",msg);
+        if(rolemachine.property("state").toString() == "leader"){
+            textview->append("Debug:leader append his msg directly");
+            textview->append(QString::number(mySocket->getmyport())+" : "+msg);
+            consensus_log.insert(QString::number(consensusID), map);
+            consensusID++;
+            local_cache.clear();
+        }
+        else if(curleader!=0){
+            textview->append("Debug: curleader is not null, send MSG request");
             QByteArray body;
-            QVariantMap map;
-            map.insert("From",mySocket->getmyport());
-            map.insert("MSG",msg);
             QDataStream out(&body, QIODevice::WriteOnly);
             out << map;
             mySocket->writeDatagram(body, QHostAddress::LocalHost, curleader);
@@ -636,11 +530,13 @@ void ChatDialog::gotReturnPressed()
     }
 
     if(input == "<GET_CHAT>"){
-        textview->append("GET CHAT MOCK........... ");
+        textview->append("chat history........... ");
         for(int i = 0; i < consensusID; i++){
-            textview->append("  ID "+QString::number(i));
-            textview->append("  sender "+consensus_log[i]["From"]);
-            textview->append("  MSG"+consensus_log[i]["MSG"]);
+            QVariantMap curMap = QVariant(consensus_log[QString::number(i)]).toMap();
+            textview->append("Debug: sender is"+curMap["From"].toString());
+            textview->append(curMap["From"].toString()+" : "+curMap["MSG"].toString());
+            //textview->append(curMap["From"]);
+           // textview->append();
         }
     }
 
