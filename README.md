@@ -1,5 +1,5 @@
 # NDS-Raft-protocol-chat
-
+```
 <STOP> 
 LEADER: 
 turn off everything; 
@@ -34,3 +34,4 @@ my state
 
 <GET_CHAT>
 
+```
