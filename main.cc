@@ -141,25 +141,41 @@ void ChatDialog::goVote(){
 }
 
 void ChatDialog::processHeartBeat(){
-    textview->append( QString::number(mySocket->getmyport())+"Debug: REC heartbeat");
+    textview->append( QString::number(mySocket->getmyport())+"Debug: REC heartbeat from "+QString::number(curleader));
     electTimer->start();
     //check term, if less than cur, reply false
     //if term higher, reply true
     if(revTerm >= curterm){
         curterm = revTerm;
-        //###send an ack
         curleader = poleader;
-        qDebug()<< "#" << mySocket->getmyport() << " Status: Current leader is: " << curleader << " #";
-        textview->append(" Status: Current leader is: " + QString::number(curleader));
         while(consensus_log.contains(QString::number(consensusID))){
             QVariantMap curMap = QVariant(consensus_log[QString::number(consensusID)]).toMap();
-            int sender = QVariant(curMap["FROM"]).toInt();
+
+            int sender = QVariant(curMap["From"]).toInt();
             QString curMSG = QVariant(curMap["MSG"]).toString();
+
+            textview->append("Debug: cur msg sender " + QString::number(sender)+" my port "+QString::number(mySocket->getmyport()));
             if(sender == mySocket->getmyport()){
+                textview->append("Debug: one msg is commited! localcache size " + QString::number(local_cache.size()));
                 local_cache.remove(local_cache.indexOf(curMSG));
+                textview->append("Debug: removed! localcache size" + QString::number(local_cache.size()));
             }
             textview->append(curMap["From"].toString() + ": " + curMap["MSG"].toString());
             consensusID++;
+        }
+
+        if(local_cache.size()>0){
+            for(int i = 0; i < local_cache.size(); i++){
+                QString msg = local_cache.at(i);
+                QVariantMap map;
+                map.insert("From",mySocket->getmyport());
+                map.insert("MSG",msg);
+                QByteArray body;
+                QDataStream out(&body, QIODevice::WriteOnly);
+                out << map;
+                mySocket->writeDatagram(body, QHostAddress::LocalHost, curleader);
+
+            }
         }
 
     }
@@ -421,12 +437,6 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
             poleader = messageMap["From"].toInt();
             consensus_log = messageMap["ConsensusLog"].toMap();
             //if Candidate->follower, if Follower, process heartbeat reply ack
-            while(consensus_log.contains(QString::number(consensusID))){
-                QVariantMap logInfo = consensus_log[QString::number(consensusID)].toMap();
-                textview->append("Debug: new message from"+logInfo["From"].toString());
-                textview->append(QVariant(logInfo["From"]).toString() + " : " + logInfo["MSG"].toString());
-                consensusID++;
-            }
             emit getHeartBeat();
         }
         else if(messageMap.contains("RequestVote")){
@@ -466,7 +476,6 @@ void ChatDialog::gotReturnPressed()
         local_cache.append(msg);
         QVariantMap map;
         map.insert("From",mySocket->getmyport());
-        textview->append("Debug: add sender info "+map["From"].toString());
         map.insert("MSG",msg);
         if(rolemachine.property("state").toString() == "leader"){
             textview->append("Debug:leader append his msg directly");
@@ -475,7 +484,7 @@ void ChatDialog::gotReturnPressed()
             consensusID++;
             local_cache.clear();
         }
-        else if(curleader!=0){
+        else if(curleader!=0 && rolemachine.property("state")!="stopped"){
             textview->append("Debug: curleader is not null, send MSG request");
             QByteArray body;
             QDataStream out(&body, QIODevice::WriteOnly);
@@ -483,6 +492,8 @@ void ChatDialog::gotReturnPressed()
             mySocket->writeDatagram(body, QHostAddress::LocalHost, curleader);
         }
     }
+
+    if(rolemachine.property("state") == "stopped") return;
 
     if(input=="<STOP>"){
         emit getStop();
@@ -533,7 +544,6 @@ void ChatDialog::gotReturnPressed()
         textview->append("chat history........... ");
         for(int i = 0; i < consensusID; i++){
             QVariantMap curMap = QVariant(consensus_log[QString::number(i)]).toMap();
-            textview->append("Debug: sender is"+curMap["From"].toString());
             textview->append(curMap["From"].toString()+" : "+curMap["MSG"].toString());
             //textview->append(curMap["From"]);
            // textview->append();
