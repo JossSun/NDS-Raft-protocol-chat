@@ -103,6 +103,8 @@ ChatDialog::ChatDialog()
 
 }
 
+
+
 void ChatDialog::followerHandler() {
         heartTimer->stop();
         qDebug() << "#Debug: Become a Follower " << mySocket->getmyport();
@@ -127,6 +129,7 @@ void ChatDialog::goVote(){
             map.insert("VoteFor", false);// candidate->follower
         }
         else{
+            curleader = 0;
             map.insert("VoteFor", true);
             map.insert("From", mySocket->getmyport());
             curterm = revTerm;
@@ -206,11 +209,13 @@ void ChatDialog::processVote(QVariantMap voteMsg){
 		emit higherTerm();	
 	}
 	else{
-        voter.insert(voteMsg["From"].toInt());
-		numofvotes++;
-		if(numofvotes ==3){
-			emit getThreeVotes();		
-		}
+
+            voter.insert(voteMsg["From"].toInt());
+            numofvotes++;
+            if(numofvotes ==3){
+                emit getThreeVotes();
+            }
+
 	}
 	
 }
