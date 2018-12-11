@@ -39,7 +39,7 @@ ChatDialog::ChatDialog()
 
     follower->addTransition(electTimer, SIGNAL(timeout()), candidate);
     //follower->addTransition(this, SIGNAL(getHeartBeat()), follower);
-    candidate->addTransition(candidateTimer, SIGNAL(timeout()), candidate);
+    candidate->addTransition(candidateTimer, SIGNAL(timeout()), follower);
     candidate->addTransition(this, SIGNAL(getHeartBeat()), follower);
     //candidate->addTransition(this, SIGNAL(higherTerm()), follower);
     candidate->addTransition(this, SIGNAL(getVoteReq()), follower);
@@ -119,7 +119,7 @@ void ChatDialog::followerHandler() {
 
 void ChatDialog::goVote(){
         qDebug()<<"#Debug: Start voting process "  << mySocket->getmyport();
-        textview->append("#Debug: Start voting process " + QString::number(mySocket->getmyport()));
+        //textview->append("#Debug: Start voting process " + QString::number(mySocket->getmyport()));
         qDebug()<< "#" << mySocket->getmyport() << " Status: received a RequestVote RPC" << " #";
         electTimer->start();
         QVariantMap map;
@@ -148,6 +148,7 @@ void ChatDialog::processHeartBeat(){
     //check term, if less than cur, reply false
     //if term higher, reply true
     if(revTerm >= curterm){
+        emit(higherTerm());
         curterm = revTerm;
         curleader = poleader;
 
@@ -177,7 +178,7 @@ void ChatDialog::candidateHandler(){
     curterm++;
     curleader = 0;
     qDebug()<<"#Debug: Become a Candidate " << mySocket->getmyport();
-    textview->append("#Debug: Become a Candidate " + QString::number(mySocket->getmyport()));
+//    textview->append("#Debug: Become a Candidate " + QString::number(mySocket->getmyport()));
     candidateTimer->start(50);
 	voter.clear();
 	numofvotes = 1;
@@ -190,7 +191,7 @@ void ChatDialog::candidateHandler(){
 void ChatDialog::sendVoteReq() {
         //check a set of port who has voted me, if not send a request again
         qDebug()<< "#Debug: Send out RequestVote RPC "  << mySocket->getmyport();
-        textview->append("#Debug: Send out RequestVote RPC " + QString::number(mySocket->getmyport()));
+ //       textview->append("#Debug: Send out RequestVote RPC " + QString::number(mySocket->getmyport()));
 
         QVariantMap votereq;
         votereq.insert("RequestVote", 1);
@@ -203,7 +204,6 @@ void ChatDialog::sendVoteReq() {
         if(participants.empty())
             qDebug()<<"#Debug: sendVoteReq  no participants";
         for (int i = 0; i < participants.size(); i++) {
-
             if(participants[i] != mySocket->getmyport()){
                     qDebug()<< "#Debug: sendVoteReq() to " << participants[i];
                     mySocket->writeDatagram(data, QHostAddress::LocalHost, participants[i]);
@@ -216,27 +216,22 @@ void ChatDialog::processVote(QVariantMap voteMsg){
     textview->append("#Debug: Processing Votes " + QString::number(mySocket->getmyport()));
 
 	//see whether true or false
-	if(voteMsg["VoteFor"] == false){
-		emit higherTerm();	
-	}
-	else{
+        if(voteMsg["VoteFor"] == true){
             voter.insert(voteMsg["From"].toInt());
             numofvotes++;
             if(numofvotes ==3){
                 emit getThreeVotes();
             }
-
 	}
         int voteConsensusID = voteMsg["ConsensusID"].toInt();
         if(voteConsensusID > consensusID) updateConsensusLog(voteConsensusID, voteMsg["ConsensusLog"].toMap());
 }
 
-
 void ChatDialog::leaderHandler(){
         //curterm++;
         curleader = mySocket->getmyport();
         qDebug()<<"#Debug: Become a leader now! " << mySocket->getmyport();
-        textview->append("#Debug: Become a *** LEADER *** " + QString::number(mySocket->getmyport()));
+        textview->append("#Debug: Become a *** LEADER *** " + QString::number(consensusID));
 
         sendHeartBeat();
 
@@ -451,7 +446,7 @@ void ChatDialog::gotReturnPressed()
 {
     // Just echo the string locally.
     qDebug() << "INFO: Entered gotReturnPressed(). Message Sending: " << textline->text();
-    textview->append(QString::number(mySocket->getmyport()) + ": " + textline->text());
+ //   textview->append(QString::number(mySocket->getmyport()) + ": " + textline->text());
 
     QString input = textline->text();
 
@@ -530,7 +525,7 @@ void ChatDialog::gotReturnPressed()
     }
 
     if(input == "<GET_CHAT>"){
-        textview->append("chat history........... ");
+        textview->append("......CHAT HISTORY.......... ");
         for(int i = 0; i < consensusID; i++){
             QVariantMap curMap = QVariant(consensus_log[QString::number(i)]).toMap();
             textview->append(curMap["From"].toString()+" : "+curMap["MSG"].toString());
@@ -564,7 +559,10 @@ void ChatDialog::updateConsensusLog(int recConsensusID, QVariantMap recConsensus
 
     //textview->append("Debug:updated to "+QString::number(recConsensusID));
     consensus_log = recConsensusLog;
-    if(consensusID >= recConsensusID) return;
+    if(consensusID >= recConsensusID){
+        consensusID = recConsensusID;
+        return;
+    }
     while(consensus_log.contains(QString::number(consensusID))){
         QVariantMap curMap = QVariant(consensus_log[QString::number(consensusID)]).toMap();
 
@@ -574,7 +572,7 @@ void ChatDialog::updateConsensusLog(int recConsensusID, QVariantMap recConsensus
        // textview->append("Debug: cur msg sender " + QString::number(sender)+" my port "+QString::number(mySocket->getmyport()));
         if(sender == mySocket->getmyport()){
         //    textview->append("Debug: one msg is commited! localcache size " + QString::number(local_cache.size()));
-            local_cache.remove(local_cache.indexOf(curMSG));
+           local_cache.remove(local_cache.indexOf(curMSG));
         //    textview->append("Debug: removed! localcache size" + QString::number(local_cache.size()));
         }
         textview->append(curMap["From"].toString() + ": " + curMap["MSG"].toString());
