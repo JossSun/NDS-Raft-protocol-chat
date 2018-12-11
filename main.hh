@@ -55,6 +55,7 @@ class ChatDialog : public QDialog
     public:
         ChatDialog();
         void sendDgram(QByteArray);
+        void updateConsensusLog(int, QVariantMap);
         NetSocket *mySocket;
         int SeqNo;
         int consensusID;
