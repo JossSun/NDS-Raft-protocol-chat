@@ -41,7 +41,7 @@ ChatDialog::ChatDialog()
     //follower->addTransition(this, SIGNAL(getHeartBeat()), follower);
     candidate->addTransition(candidateTimer, SIGNAL(timeout()), candidate);
     candidate->addTransition(this, SIGNAL(getHeartBeat()), follower);
-    candidate->addTransition(this, SIGNAL(higherTerm()), follower);
+    //candidate->addTransition(this, SIGNAL(higherTerm()), follower);
     candidate->addTransition(this, SIGNAL(getVoteReq()), follower);
     candidate->addTransition(this, SIGNAL(getThreeVotes()), leader);
     leader->addTransition(this, SIGNAL(higherTerm()),follower);
@@ -204,10 +204,10 @@ void ChatDialog::sendVoteReq() {
             qDebug()<<"#Debug: sendVoteReq  no participants";
         for (int i = 0; i < participants.size(); i++) {
 
-        if(!voter.contains(participants[i])){
-                qDebug()<< "#Debug: sendVoteReq() to " << participants[i];
-                mySocket->writeDatagram(data, QHostAddress::LocalHost, participants[i]);
-        }
+            if(participants[i] != mySocket->getmyport()){
+                    qDebug()<< "#Debug: sendVoteReq() to " << participants[i];
+                    mySocket->writeDatagram(data, QHostAddress::LocalHost, participants[i]);
+            }
         }
 }
 
@@ -406,6 +406,7 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
 
     if(dropped.find(sender)==dropped.end()){
         if(rolemachine.property("state").toString()=="leader"){
+
             if(messageMap.contains("MSG")){
                 QString revMSG = QVariant(messageMap["MSG"]).toString();
                 QVariantMap map;
@@ -420,9 +421,7 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
         if(messageMap.contains("AppendEntries")){
             //deal with term compare and leaderId here
             revTerm = messageMap["term"].toInt();
-            if(revTerm < curterm){
-                emit higherTerm();
-            }
+
             poleader = messageMap["From"].toInt();
             updateConsensusLog(messageMap["ConsensusID"].toInt(),messageMap["ConsensusLog"].toMap());
             //if Candidate->follower, if Follower, process heartbeat reply ack
@@ -431,9 +430,9 @@ void ChatDialog::processIncomingDatagram(QByteArray incomingBytes)
         else if(messageMap.contains("RequestVote")){
             //receive a voting request
             qDebug()<<"Receive a Voting Request";
-            if(messageMap["term"].toInt() > curterm){
-                emit higherTerm();
-            }
+//            if(messageMap["term"].toInt() > curterm){
+//                emit higherTerm();
+//            }
             toBeVoted = messageMap["From"].toInt();
             emit getVoteReq();
 
